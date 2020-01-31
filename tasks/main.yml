@@ -1,0 +1,117 @@
+# tasks/main.yml
+# Create ALB and dependencies
+---
+- name: Create security group for ALB
+  ec2_group:
+    name: "{{ alb_name }}-sg"
+    description: "Security group for {{ alb_name }}"
+    region: "{{ aws_region }}"
+    vpc_id: "{{ vpc_id }}"
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 443
+        to_port: 443
+        cidr_ip: 0.0.0.0/0
+    rules_egress:
+      - proto: all
+        from_port: 0
+        to_port: 65535
+        cidr_ip: 0.0.0.0/0
+    tags: 
+      Name : "{{ alb_name }}-sg"
+
+- name: Add ALB sg to EC2 sg
+  ec2_group:
+    name: "{{ alb_target_ec2_name }}-sg"
+    description: "Security group for {{ alb_target_ec2_name }}"
+    region: "{{ aws_region }}"
+    vpc_id: "{{ vpc_id }}"
+    purge_rules: False
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        group_name: "{{ alb_name }}-sg"
+    tags: 
+      Name : "{{ alb_target_ec2_name }}-sg" 
+
+- name: Lookup subnet info
+  ec2_vpc_subnet_info:
+    filters:
+      "tag:Name": "{{ item }}"
+  loop: "{{ alb_subnet_names }}"
+  register: subnet_info
+
+- name: Lookup target EC2 info
+  ec2_instance_info:
+    filters:
+      "tag:Name": "{{ alb_target_ec2_name }}"
+  register: ec2_info
+
+- name: Lookup security group info
+  ec2_group_info:
+    filters:
+      group-name: "{{ alb_name }}-sg"
+  register: sg_info  
+
+- name: Create ALB target group with instances
+  elb_target_group:
+    name: "{{ alb_name }}-tg"
+    protocol: http
+    port: 80
+    vpc_id: "{{ vpc_id }}"
+    health_check_protocol: http
+    health_check_path: "{{ tg_health_check_path }}"
+    successful_response_codes: "200"
+    targets: 
+      - Id: "{{ ec2_info|json_query('instances[0].instance_id') }}"
+    state: present
+
+- name: Create ALB
+  elb_application_lb:
+    name: "{{ alb_name }}"
+    state: present
+    security_groups:
+      - "{{ alb_name }}-sg"
+    subnets: "{{ subnet_info.results | sum(attribute='subnets', start=[]) | map(attribute='id') | list }}" 
+    listeners:
+      - Protocol: HTTPS
+        Port: 443
+        DefaultActions:
+          - Type: forward
+            TargetGroupName: "{{ alb_name }}-tg"
+        Certificates:
+          - CertificateArn: "{{ alb_cert_arn }}"
+        SslPolicy: ELBSecurityPolicy-2016-08
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: "443"
+              Host: "#{host}"
+              Path: "/#{path}"
+              Query: "#{query}"
+              StatusCode: "HTTP_301"
+
+- name: Lookup ALB info
+  elb_application_lb_info:
+    names: "{{ alb_name }}"
+    region: "{{ aws_region }}"
+  register: alb_info
+
+- name: Create Route 53 record for ALB
+  route53:
+      state: present
+      zone: "{{ r53_hosted_zone_name }}"
+      record: "{{ r53_record }}"
+      type: A
+      value: "{{ alb_info|json_query('load_balancers[0].dns_name') }}"
+      alias: True
+      alias_hosted_zone_id: "{{ alb_info|json_query('load_balancers[0].canonical_hosted_zone_id') }}"
+      overwrite: "{{ r53_overwrite }}"

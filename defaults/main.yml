@@ -1,0 +1,5 @@
+# defaults/main.yml
+# Role default parameters
+---
+tg_health_check_path: /
+r53_overwrite: false
