@@ -33,8 +33,8 @@
     purge_rules: "{{ alb_ec2_sg_purge_rules }}"
     rules:
       - proto: tcp
-        from_port: 80
-        to_port: 80
+        from_port: "{{ alb_target_port }}"
+        to_port: "{{ alb_target_port }}"
         group_name: "{{ alb_name }}-sg"
     tags: 
       Name : "{{ alb_target_ec2_name }}-sg" 
@@ -62,7 +62,7 @@
   elb_target_group:
     name: "{{ alb_name }}-tg"
     protocol: http
-    port: 80
+    port: "{{ alb_target_port }}"
     vpc_id: "{{ vpc_id }}"
     health_check_protocol: http
     health_check_path: "{{ tg_health_check_path }}"
@@ -88,7 +88,7 @@
           - CertificateArn: "{{ alb_cert_arn }}"
         SslPolicy: ELBSecurityPolicy-2016-08
       - Protocol: HTTP
-        Port: 80
+        Port: "{{ alb_target_port }}"
         DefaultActions:
           - Type: redirect
             RedirectConfig:
