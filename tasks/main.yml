@@ -30,7 +30,7 @@
     description: "Security group for {{ alb_target_ec2_name }}"
     region: "{{ aws_region }}"
     vpc_id: "{{ vpc_id }}"
-    purge_rules: False
+    purge_rules: "{{ alb_ec2_sg_purge_rules }}"
     rules:
       - proto: tcp
         from_port: 80
