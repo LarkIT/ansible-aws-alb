@@ -88,7 +88,7 @@
           - CertificateArn: "{{ alb_cert_arn }}"
         SslPolicy: ELBSecurityPolicy-2016-08
       - Protocol: HTTP
-        Port: "{{ alb_target_port }}"
+        Port: 80
         DefaultActions:
           - Type: redirect
             RedirectConfig:
